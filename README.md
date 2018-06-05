@@ -1,1 +1,1 @@
-[Docs](http://PCreations.github.io/tamia/docs/index.html)
+[Docs](https://pcreations.github.io/tamia/global.html#createState)
