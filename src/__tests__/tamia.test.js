@@ -19,6 +19,27 @@ describe('given a state with { foo: { bar: "foobar" }, baz: 42 } as initial stat
       done();
     });
   });
+  describe('when calling update with an updater function', () => {
+    test('then should update the state', (done) => {
+      const state = createState({ foo: { bar: "foobar" }, baz: 42 },
+        done.fail.bind(done),
+      );
+      state.select$('baz').pipe(
+        skip(1), // skipping initial state
+        take(1),
+        tap((baz) => {
+          expect(baz).toEqual(17);
+        }),
+      ).subscribe({
+        complete: done,
+        error: done.fail.bind(done),
+      });
+      state.update(state => ({
+        ...state,
+        baz: 17
+      }));
+    });
+  });
   describe('given a selector of foo.bar : select$("foo", "bar")', () => {
     describe('when subscribing to the selector', () => {
       test('then the initial state foo.bar should be returned', done => {
@@ -77,7 +98,7 @@ describe('given a state with { foo: { bar: "foobar" }, baz: 42 } as initial stat
           });
 
           state.combineWorkflows(
-            state.updaters('updateBaz').pipe(
+            state.update.$('updateBaz').pipe(
               filter(nextState => nextState.baz % 2 === 1),
               map(nextState => updateFoobar(`foobar${nextState.baz}`))
             ),

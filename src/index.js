@@ -43,12 +43,42 @@ import { isEqual as _isEqual, slice as _slice } from 'lodash';
  */
 
 /**
+ * A function to dispatch [Updater]{@link Updater} or react to updater being dispatched
+ * @typedef {function} UpdateDispatcher
+ * @param {function} Updater
+ * @property {function} $ - A function accepting an updater name (its function.name) as argument and returning a stream of its resultint state updates
+ * @example
+ * const store = createState({ baz: null, foo: null });
+ *
+ * const updateBaz = state => ({
+ *   ...state,
+ *   baz: 42
+ * });
+ *
+ * const updateFoo = foo => function updateFoo(state) {
+ *   return {
+ *     ...state,
+ *     foo,
+ *   };
+ * };
+ *
+ * state.update.$('updateFoo').subscribe(nextState => console.log('updateFoo has been dispatched, next state is', nextState));
+ * );
+ *
+ * state.update.$('updateBaz').subscribe(nextState => console.log('updateBaz has been dispatched, next state is', nextState));
+ * );
+ *
+ * state.update(updateBaz);
+ * state.update(updateFoo('new foo'));
+ */
+
+/**
  * @typedef {Object} State
  * @property {Rx.Subject} $ - The state of the application as a Rxjs hot stream. When subscribed, the last state is returned
  * @property {StateSelector} select$
  * @property {Object} value - The actual value of the application's state
  * @property {WorkflowsCombiner} combineWorkflows
- * @property {UpdaterFactory} createUpdater
+ * @property {UpdateDispatcher} update
  */
 
 /**
@@ -80,7 +110,7 @@ import { isEqual as _isEqual, slice as _slice } from 'lodash';
  *  map(updateBar)
  * );
  *
- * const editFoobazWhenBarIsOdd$ = state.updaters('updateBar').pipe(
+ * const editFoobazWhenBarIsOdd$ = state.update.$('updateBar').pipe(
  *   filter(({ foo: { bar } }) => bar % 2 === 1),
  *   map(({ foo: { bar } }) => updateFooBaz(`baz${bar}`))
  * )
@@ -101,12 +131,14 @@ const createState = (initialState, onError = console.error.bind(console)) => {
 
   const updates$ = new Subject().pipe(subscribeOn(queueScheduler));
 
+  const update = updates$.next.bind(updates$);
+
   const _updaters = new Subject().pipe(
     share(),
     subscribeOn(queueScheduler)
   );
 
-  const updaters = updaterName => _updaters.pipe(
+  update.$ = updaterName => _updaters.pipe(
     filter(({ name, newState }) => updaterName === name),
     map(({ name, newState }) => newState),
   );
@@ -150,7 +182,7 @@ const createState = (initialState, onError = console.error.bind(console)) => {
       return value;
     },
     combineWorkflows,
-    updaters
+    update,
   };
 };
 
