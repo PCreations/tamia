@@ -1,6 +1,6 @@
 {
   "name": "@pcriulan/tamia",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "reactive application state management with rxjs",
   "main": "dist/bundle.umd.js",
   "author": "Pierre Criulanscy",
