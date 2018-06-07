@@ -9,71 +9,6 @@ import {
 from 'rxjs/operators';
 import createState from '../index';
 
-describe('given the createUpdater function', () => {
-  describe('when given two arguments', () => {
-    test('then returns a curried function', () => {
-      const state = createState();
-      const updater = state.createUpdater((value, state) => {
-        return ({
-          ...state,
-          value,
-        });
-      });
-
-      expect(updater(42)({ foo: 'bar' })).toEqual({
-        foo: 'bar',
-        value: 42,
-      });
-    });
-    test('then returns a function exposing a stream of the resulting state', (done) => {
-      const state = createState({ foo: 'bar' }, done.fail.bind(done));
-      const updater = state.createUpdater((value, state) => ({
-        ...state,
-        value,
-      }));
-      updater.$.pipe(
-        take(2),
-        map((nextState, i) => {
-          if (i === 0) {
-            expect(nextState).toEqual({
-              foo: 'bar',
-              value: 42,
-            });
-          }
-          else {
-            expect(nextState).toEqual({
-              foo: 'bar',
-              value: 17,
-            });
-          }
-        })
-      ).subscribe({
-        complete: done,
-        error: done.fail.bind(done),
-      });
-
-      state.combineWorkflows(
-        range(0, 2).pipe(map(i => updater(i === 0 ? 42 : 17)))
-      );
-    });
-  });
-  describe('when given one argument', () => {
-    test('then should execute the function normally', () => {
-      const state = createState();
-      const updater = state.createUpdater(state => {
-        return ({
-          ...state,
-          value: 42,
-        });
-      });
-
-      expect(updater({ foo: 'bar' })).toEqual({
-        foo: 'bar',
-        value: 42,
-      });
-    });
-  });
-});
 describe('given a state with { foo: { bar: "foobar" }, baz: 42 } as initial state', () => {
   describe('when calling state.value', () => {
     test('then the initial state should be returned', (done) => {
@@ -104,25 +39,27 @@ describe('given a state with { foo: { bar: "foobar" }, baz: 42 } as initial stat
   });
   describe('given a stream emitting 5 numbers from 0 to 4 and mapping this number to an updateBaz updater function', () => {
     describe('given an updateFoobar updater function and a updateFooBarWhenBazIsOdd$ stream combined as workflows', () => {
-      describe('when the updateFoobar function emits', () => {
+      describe('when the updateBaz updater is emitted by the workflow', () => {
         test('then the updateFooBarWhenBazIsOdd$ should receive the future state and emits updateFoobar updater function if baz is odd', (done) => {
           const state = createState({ foo: { bar: "foobar" }, baz: 42 },
             done.fail.bind(done),
           );
-          const updateBaz = state.createUpdater(function updateBaz(value, state) {
-            return ({
+          const updateBaz = (value) => function updateBaz(state) {
+            return {
               ...state,
               baz: value,
-            });
-          });
-          const updateFoobar = state.createUpdater(function updateFoobar(value, state) {
+            };
+          };
+
+          const updateFoobar = (value) => function updateFoobar(state) {
             return {
               ...state,
               foo: {
                 bar: value,
               }
             };
-          });
+          };
+
           state.select$('foo', 'bar').pipe(
             skip(1), //skipping initial value
             take(2),
@@ -140,7 +77,7 @@ describe('given a state with { foo: { bar: "foobar" }, baz: 42 } as initial stat
           });
 
           state.combineWorkflows(
-            updateBaz.$.pipe(
+            state.updaters('updateBaz').pipe(
               filter(nextState => nextState.baz % 2 === 1),
               map(nextState => updateFoobar(`foobar${nextState.baz}`))
             ),
@@ -154,10 +91,10 @@ describe('given a state with { foo: { bar: "foobar" }, baz: 42 } as initial stat
         const state = createState({ foo: { bar: "foobar" }, baz: 42 },
           done.fail.bind(done),
         );
-        const updateBaz = state.createUpdater((value, state) => ({
+        const updateBaz = (value) => (state) => ({
           ...state,
           baz: value,
-        }));
+        });
         state.select$('baz').pipe(
           skip(1), //skipping initial value
           take(5),

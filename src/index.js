@@ -3,9 +3,12 @@ import {
   startWith,
   scan,
   distinctUntilChanged,
+  share,
   shareReplay,
   observeOn,
   pluck,
+  filter,
+  map,
   subscribeOn
 }
 from 'rxjs/operators';
@@ -40,24 +43,6 @@ import { isEqual as _isEqual, slice as _slice } from 'lodash';
  */
 
 /**
- * A factory function to create an [Updater]{@link Updater} function
- * @typedef {function} UpdaterFactory
- * @param {function) updaterFn - an updater function that will receive the state as the last arguments. When more than one argument is given, a curried function is returned that accepts every arguments but the last (reserved for the state)
- * @returns {Updater} the updater function
- * @example
- * const state = createState({ foo: { bar: 42 }, foobaz: 'baz' });
- *
- * const updateFooBarAndFoobaz = state.createUpdater((foobar, foobaz, state) => ({
- *  ...state,
- *  foo: { bar: foobar },
- *  foobaz,
- * }));
- *
- * //updateFoobaz('foo', '43');
- */
-
-
-/**
  * @typedef {Object} State
  * @property {Rx.Subject} $ - The state of the application as a Rxjs hot stream. When subscribed, the last state is returned
  * @property {StateSelector} select$
@@ -83,19 +68,21 @@ import { isEqual as _isEqual, slice as _slice } from 'lodash';
  *   }
  * });
  *
- * const updateFooBaz = state.createUpdater((value, state) => ({
- *   ...state,
- *   foobaz: value,
- * });
+ * const updateFooBaz = (value) => function updateFooBaz(state) = {
+ *   return {
+ *     ...state,
+ *     foobaz: value,
+ *   };
+ * };
  *
  * const editBarEverySecDuring10sec$ = timer(0, 1000).pipe(
  *  take(10),
- *  map(timer => updateBar(timer)) // we can't just to map to updateBar because map will pass 2 arguments to the updateBar function thus conflicting with the last expected argument "state"
+ *  map(updateBar)
  * );
  *
- * const editFoobazWhenBarIsOdd$ = state.select$('foo', 'bar').pipe(
- *   filter(bar => bar % 2 === 1),
- *   map(bar => updateFooBaz(`baz${bar}`))
+ * const editFoobazWhenBarIsOdd$ = state.updaters('updateBar').pipe(
+ *   filter(({ foo: { bar } }) => bar % 2 === 1),
+ *   map(({ foo: { bar } }) => updateFooBaz(`baz${bar}`))
  * )
  *
  *
@@ -114,11 +101,23 @@ const createState = (initialState, onError = console.error.bind(console)) => {
 
   const updates$ = new Subject().pipe(subscribeOn(queueScheduler));
 
+  const _updaters = new Subject().pipe(
+    share(),
+    subscribeOn(queueScheduler)
+  );
+
+  const updaters = updaterName => _updaters.pipe(
+    filter(({ name, newState }) => updaterName === name),
+    map(({ name, newState }) => newState),
+  );
+
   const $ = updates$.pipe(
     startWith(initialState),
     scan((state, updater) => {
       const newState = updater(state);
-      updater.$.next(newState);
+      if (updater.name) {
+        _updaters.next({ name: updater.name, newState });
+      }
       return newState;
     }),
     distinctUntilChanged(_isEqual),
@@ -129,25 +128,6 @@ const createState = (initialState, onError = console.error.bind(console)) => {
     (state) => { value = state; },
     onError,
   );
-
-  const createUpdater = (updateFn) => {
-    const updateFnSubject = new Subject().pipe(shareReplay(1));
-    if (updateFn.length === 1) {
-      updateFn.$ = updateFnSubject;
-      return updateFn;
-    }
-    else if (updateFn.length > 1) {
-      const _updateFn = (...args) => {
-        const preAppliedArgs = args.length > 1 ? _slice(args, 0, args.length - 1) : args;
-        const returnedFn = state => updateFn(...preAppliedArgs, state);
-        returnedFn.$ = updateFnSubject;
-        return returnedFn;
-      };
-      _updateFn.$ = updateFnSubject;
-      return _updateFn;
-    }
-    throw new Error('missing argument state in updater function');
-  };
 
   const select$ = (...path) => {
     const [statePath, compare] =
@@ -170,7 +150,7 @@ const createState = (initialState, onError = console.error.bind(console)) => {
       return value;
     },
     combineWorkflows,
-    createUpdater,
+    updaters
   };
 };
 
