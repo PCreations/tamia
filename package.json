@@ -27,6 +27,6 @@
     "clean:dist": "rimraf dist/*",
     "build": "yarn rollup -- -c",
     "build:docs": "yarn jsdoc src/index.js -d docs",
-    "prepublishOnly": "yarn clean:dist && yarn build"
+    "prepublishOnly": "yarn test && yarn build:docs && yarn clean:dist && yarn build"
   }
 }
